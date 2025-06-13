@@ -11,13 +11,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Page configuration
 st.set_page_config(
-    page_title="UK Air Quality PM10 Analysis - Site RI2",
+    page_title="UK Air Quality Analysis",
     page_icon="🌬️",
     layout="wide"
 )
 
-st.title("🌬️ UK Air Quality Time Series Analysis")
-st.subheader("Air Pollutant Data (2000-2024)")
+st.title("UK Air Quality Time Series Analysis")
 
 # API endpoint base URLs
 ANNUAL_API_URL = "https://api.erg.ic.ac.uk/AirQuality/Annual/MonitoringReport/SiteCode={}/Year={}/json"
@@ -256,17 +255,20 @@ def main():
         if averaging_type in ["Annual", "Monthly"]:
             # Year range selection for annual/monthly data
             col_start, col_end = st.columns(2)
+            current_year = pd.Timestamp.now().year
+            year_range = list(range(2000, current_year + 1))
+            
             with col_start:
                 start_year = st.selectbox(
                     "Start year:",
-                    range(2000, 2025),
+                    year_range,
                     index=0  # Default to 2000
                 )
             with col_end:
                 end_year = st.selectbox(
                     "End year:",
-                    range(2000, 2025),
-                    index=24  # Default to 2024
+                    year_range,
+                    index=len(year_range) - 1  # Default to current year
                 )
             
             # Validate year range
@@ -278,18 +280,18 @@ def main():
             # Date range selection for daily/hourly data
             col_start, col_end = st.columns(2)
             with col_start:
+                from datetime import date, timedelta
+                tomorrow = date.today() + timedelta(days=1)
                 start_date = st.date_input(
                     "Start date:",
                     value=pd.to_datetime("2024-01-01").date(),
-                    min_value=pd.to_datetime("2000-01-01").date(),
-                    max_value=pd.to_datetime("2024-12-31").date()
+                    min_value=pd.to_datetime("2000-01-01").date()
                 )
             with col_end:
                 end_date = st.date_input(
                     "End date:",
                     value=pd.to_datetime("2024-01-07").date(),
-                    min_value=pd.to_datetime("2000-01-01").date(),
-                    max_value=pd.to_datetime("2024-12-31").date()
+                    min_value=pd.to_datetime("2000-01-01").date()
                 )
             
             # Validate date range
@@ -331,7 +333,7 @@ def main():
         for i, site_code in enumerate(available_sites):
             with site_cols[i % 4]:
                 site_display = f"{site_code} - {site_mapping[site_code]}"
-                if st.checkbox(site_display, value=(site_code == "RI2"), key=f"site_{site_code}"):  # Default RI2 selected
+                if st.checkbox(site_display, value=False, key=f"site_{site_code}"):  # No default selection
                     selected_sites.append(site_code)
         
         if not selected_sites:
@@ -347,25 +349,27 @@ def main():
         
         for i, pollutant in enumerate(available_pollutants):
             with poll_cols[i]:
-                if st.checkbox(pollutant, value=(pollutant == "PM10")):  # Default PM10 selected
+                if st.checkbox(pollutant, value=False):  # No default selection
                     selected_pollutants.append(pollutant)
         
         if not selected_pollutants:
             st.warning("Please select at least one pollutant type")
             return
         
-        st.markdown("### Data Collection")
-        
         # Create fetch button text based on averaging type
         if averaging_type in ["Annual", "Monthly"]:
-            fetch_button_text = f"🔄 Fetch {averaging_type} Data ({start_year}-{end_year})"
+            fetch_button_text = f"Fetch {averaging_type} Data"
             date_range_display = f"{start_year}-{end_year}"
         else:
-            fetch_button_text = f"🔄 Fetch {averaging_type} Data ({start_date} to {end_date})"
+            fetch_button_text = f"Fetch {averaging_type} Data"
             date_range_display = f"{start_date} to {end_date}"
             
-        if st.button(fetch_button_text, type="primary"):
-            
+        # Wider fetch button
+        col1, col2 = st.columns([2, 3])
+        with col1:
+            fetch_clicked = st.button(fetch_button_text, type="primary", use_container_width=True)
+        
+        if fetch_clicked:
             # Initialize progress tracking
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -509,10 +513,7 @@ def main():
         site_mapping = st.session_state.get('site_mapping', {})
         
         st.markdown("---")
-        if avg_type in ["Annual", "Monthly"]:
-            st.markdown(f"### 📊 {avg_type} Time Series Analysis ({date_range[0]}-{date_range[1]})")
-        else:
-            st.markdown(f"### 📊 {avg_type} Time Series Analysis ({date_range[0]} to {date_range[1]})")
+        st.markdown("### Data Analysis")
         
         # Process data based on averaging type
         if avg_type == "Annual":
@@ -581,31 +582,11 @@ def main():
             st.error("No valid data found for the selected criteria")
             return
         
-        # Display summary metrics
-        st.markdown("#### Summary Statistics")
-        metrics_cols = st.columns(4)
-        
-        with metrics_cols[0]:
-            st.metric("Data Points", len(df))
-        with metrics_cols[1]:
-            st.metric("Sites", len(df['Site'].unique()))
-        with metrics_cols[2]:
-            st.metric("Pollutants", len(df['Pollutant'].unique()))
-        with metrics_cols[3]:
-            st.metric("Avg Value", f"{df['Value'].mean():.1f} μg/m³")
-        
-        # CSV download functionality
-        csv_data = df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download CSV",
-            data=csv_data,
-            file_name=f"air_quality_data_{pd.Timestamp.now().date().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
+
         
         # Initialize session state for chart width if not exists
         if 'chart_width' not in st.session_state:
-            st.session_state.chart_width = 100
+            st.session_state.chart_width = 70
         
         chart_width_percent = st.session_state.chart_width
         
@@ -846,13 +827,12 @@ def main():
         # Set up chart title and axis labels
         if avg_type == "Annual":
             x_title = '<b>Year</b>'
-            chart_title = f'<b>Air Quality {avg_type} Data ({date_range[0]}-{date_range[1]})</b>'
         elif avg_type == "Monthly":
             x_title = '<b>Date</b>'
-            chart_title = f'<b>Air Quality {avg_type} Data ({date_range[0]}-{date_range[1]})</b>'
         else:  # Hourly or Daily
             x_title = '<b>Time</b>'
-            chart_title = f'<b>Air Quality {avg_type} Data ({date_range[0]} to {date_range[1]})</b>'
+        
+        chart_title = '<b>Air Quality Data Analysis</b>'
         
         fig.update_layout(
             title={
@@ -925,6 +905,8 @@ def main():
             # Full width display
             st.plotly_chart(fig, use_container_width=True)
         
+
+        
         # Chart width slider below the chart
         chart_width_percent = st.slider(
             "Chart width",
@@ -943,6 +925,15 @@ def main():
         
         # Data table display
         st.markdown("### Complete Dataset")
+        
+        # CSV download functionality
+        csv_data = df.to_csv(index=False)
+        st.download_button(
+            label="Download CSV",
+            data=csv_data,
+            file_name=f"air_quality_data_{pd.Timestamp.now().date().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
         
         # Format the dataframe for display
         display_df = df.copy()
@@ -981,7 +972,7 @@ def main():
         
         with info_col2:
             if avg_type in ["Annual", "Monthly"]:
-                years_requested = date_range[1] - date_range[0] + 1
+                years_requested = abs(date_range[1] - date_range[0]) + 1
                 if avg_type == "Annual":
                     total_possible = years_requested * len(sites) * len(pollutants)
                 else:
@@ -989,9 +980,9 @@ def main():
                 period_info = f"{date_range[0]}-{date_range[1]} ({years_requested} years)"
             else:  # Hourly or Daily
                 from datetime import datetime
-                start_dt = datetime.strptime(date_range[0], '%Y-%m-%d')
-                end_dt = datetime.strptime(date_range[1], '%Y-%m-%d')
-                days_requested = (end_dt - start_dt).days + 1
+                start_dt = datetime.strptime(str(date_range[0]), '%Y-%m-%d')
+                end_dt = datetime.strptime(str(date_range[1]), '%Y-%m-%d')
+                days_requested = abs((end_dt - start_dt).days) + 1
                 if avg_type == "Hourly":
                     total_possible = days_requested * 24 * len(sites) * len(pollutants)
                 else:  # Daily
