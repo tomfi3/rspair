@@ -1,0 +1,13 @@
+name: Keep Streamlit App Awake (daytime)
+
+on:
+  schedule:
+    # Run every 10 minutes from 7 AM to 8:50 PM UTC
+    - cron: '*/15 7-20 * * *'
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render site
+        run: curl -s https://rspair-ukair.streamlit.app/ > /dev/null
